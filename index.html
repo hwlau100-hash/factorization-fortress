@@ -641,29 +641,21 @@
         localData[mode] = localData[mode].slice(0, 10);
         localStorage.setItem('fact_lb_v3', JSON.stringify(localData));
 
-        if (CLOUD_URL.includes("https://script.google.com/macros/s/AKfycbzHKpUT-vBV1cjIzy1XnUuXMVS6Ckmkg5wWzBt2JV2w08wAmtNvoYzvIsQmdAPXOJ34-A/exec")) return;
-
         // Send score to Google Sheets
         var addUrl = CLOUD_URL + "?action=add&mode=" + encodeURIComponent(mode) + "&name=" + encodeURIComponent(name) + "&score=" + encodeURIComponent(score) + "&time=" + encodeURIComponent(time);
         
         fetch(addUrl)
             .then(function(res) { return res.json(); })
-            .then(function(data) { console.log("Score safely dispatched to Google Sheets:", data); })
-            .catch(function(e) { console.log("Error contacting Google Sheets.", e); });
+            .then(function(data) { console.log("Score safely dispatched to Google Sheets."); })
+            .catch(function(e) { console.log("Note: Could not reach Google Sheets, score saved locally.", e); });
     }
 
     function showLeaderboard() {
-        if (CLOUD_URL.includes("https://script.google.com/macros/s/AKfycbzHKpUT-vBV1cjIzy1XnUuXMVS6Ckmkg5wWzBt2JV2w08wAmtNvoYzvIsQmdAPXOJ34-A/exec")) {
-            alert("TEACHER NOTICE:\nYou haven't connected your Google Sheet yet! Scores will only save locally to this computer.\n\nPlease follow the setup instructions to get your Google Web App URL and paste it into the code.");
-        }
-
         switchScreen('screen-leaderboard');
         
         // Show local records immediately so there is no loading screen
         renderLeaderboardTables(getStoredData()); 
         
-        if (CLOUD_URL.includes("https://script.google.com/macros/s/AKfycbzHKpUT-vBV1cjIzy1XnUuXMVS6Ckmkg5wWzBt2JV2w08wAmtNvoYzvIsQmdAPXOJ34-A/exec")) return;
-
         // Fetch global records from Google Sheets and update the tables
         fetch(CLOUD_URL + "?action=get")
             .then(function(res) {
@@ -671,12 +663,12 @@
                 return res.json();
             })
             .then(function(remoteData) {
-                if (remoteData && remoteData.easy) { // Check to ensure it isn't an empty error response
+                if (remoteData && remoteData.easy) {
                     localStorage.setItem('fact_lb_v3', JSON.stringify(remoteData));
                     renderLeaderboardTables(remoteData);
                 }
             })
-            .catch(function(err) { console.log("Google Sheets request failed.", err); });
+            .catch(function(err) { console.log("Google Sheets sync failed, showing local data.", err); });
     }
 
     function switchLbTab(mode) {
