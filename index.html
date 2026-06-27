@@ -336,11 +336,8 @@
     // ========================================================================
     // 📊 GOOGLE SHEETS LEADERBOARD DATABASE SETUP 📊
     // ========================================================================
-    
     var CLOUD_URL = 'https://script.google.com/macros/s/AKfycbzHKpUT-vBV1cjIzy1XnUuXMVS6Ckmkg5wWzBt2JV2w08wAmtNvoYzvIsQmdAPXOJ34-A/exec';
     
-    // ========================================================================
-
     function switchScreen(screenId) {
         var screens = document.querySelectorAll('.screen');
         for(var i = 0; i < screens.length; i++) { screens[i].style.display = 'none'; }
@@ -601,7 +598,6 @@
         saveToLeaderboard(currentMode, playerName, correctCount, totalGameTime);
     }
 
-    // --- LEADERBOARD PERSISTENCE LOGIC (GOOGLE SHEETS) ---
     function getStoredData() {
         var defaultData = { easy: [], normal: [], hard: [], vhard: [] };
         try { 
@@ -641,13 +637,14 @@
         localData[mode] = localData[mode].slice(0, 10);
         localStorage.setItem('fact_lb_v3', JSON.stringify(localData));
 
-        // Send score to Google Sheets
-        var addUrl = CLOUD_URL + "?action=add&mode=" + encodeURIComponent(mode) + "&name=" + encodeURIComponent(name) + "&score=" + encodeURIComponent(score) + "&time=" + encodeURIComponent(time);
+        // Generate a unique timestamp so the browser never caches the save request
+        var cb = new Date().getTime(); 
+        var addUrl = CLOUD_URL + "?action=add&mode=" + encodeURIComponent(mode) + "&name=" + encodeURIComponent(name) + "&score=" + encodeURIComponent(score) + "&time=" + encodeURIComponent(time) + "&cb=" + cb;
         
-        fetch(addUrl)
-            .then(function(res) { return res.json(); })
-            .then(function(data) { console.log("Score safely dispatched to Google Sheets."); })
-            .catch(function(e) { console.log("Note: Could not reach Google Sheets, score saved locally.", e); });
+        // Use no-cors to prevent browser security blocks during the background save
+        fetch(addUrl, { method: 'GET', mode: 'no-cors', cache: 'no-store' })
+            .then(function() { console.log("Score dispatched to server."); })
+            .catch(function(e) { console.log("Save request error.", e); });
     }
 
     function showLeaderboard() {
@@ -656,10 +653,13 @@
         // Show local records immediately so there is no loading screen
         renderLeaderboardTables(getStoredData()); 
         
+        // Generate a unique timestamp to force the browser to fetch fresh data
+        var cb = new Date().getTime();
+        var getUrl = CLOUD_URL + "?action=get&cb=" + cb;
+
         // Fetch global records from Google Sheets and update the tables
-        fetch(CLOUD_URL + "?action=get")
+        fetch(getUrl, { method: 'GET', cache: 'no-store' })
             .then(function(res) {
-                if (!res.ok) throw new Error("Database error");
                 return res.json();
             })
             .then(function(remoteData) {
@@ -668,7 +668,7 @@
                     renderLeaderboardTables(remoteData);
                 }
             })
-            .catch(function(err) { console.log("Google Sheets sync failed, showing local data.", err); });
+            .catch(function(err) { console.log("Leaderboard sync error.", err); });
     }
 
     function switchLbTab(mode) {
