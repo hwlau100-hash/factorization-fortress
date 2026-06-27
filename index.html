@@ -333,6 +333,16 @@
 </div>
 
 <script>
+    // ========================================================================
+    // 📊 GOOGLE SHEETS LEADERBOARD DATABASE SETUP 📊
+    // Paste the "Web app URL" you copied from Google Apps Script below:
+    // Make sure it starts with https://script.google.com/macros/s/...
+    // ========================================================================
+    
+    var CLOUD_URL = 'https://script.google.com/macros/s/AKfycbyg0Iv0ItiNKtrOAwFXZC3qiyDSOjL_k1H7T9w4ow-kYS__3efYsf_kVm23a1sCwnzKlQ/exec';
+    
+    // ========================================================================
+
     function switchScreen(screenId) {
         var screens = document.querySelectorAll('.screen');
         for(var i = 0; i < screens.length; i++) { screens[i].style.display = 'none'; }
@@ -481,9 +491,6 @@
     var mappedCorrectIndex = 0; 
     var gameStats = []; 
 
-    // Cloud database configuration bucket unique to this app instance
-    var CLOUD_URL = 'https://kvdb.io/w6K2mX9qZ4vP8bN3rL7t/leaderboard_data';
-
     function goToModeSelect() {
         var inputVal = document.getElementById('player-input').value.trim();
         if (inputVal === "") { alert("Please enter your name!"); return; }
@@ -596,7 +603,7 @@
         saveToLeaderboard(currentMode, playerName, correctCount, totalGameTime);
     }
 
-    // --- LEADERBOARD PERSISTENCE LOGIC ---
+    // --- LEADERBOARD PERSISTENCE LOGIC (GOOGLE SHEETS) ---
     function getStoredData() {
         var defaultData = { easy: [], normal: [], hard: [], vhard: [] };
         try { 
@@ -629,50 +636,40 @@
     }
 
     function saveToLeaderboard(mode, name, score, time) {
-        // 1. Commit locally first so user gets instant updates
-        var localData = getStoredData();
-        localData[mode].push({ name: name, score: score, time: time });
-        localData[mode].sort(function(a, b) { return b.score !== a.score ? b.score - a.score : a.time - b.time; });
-        localData[mode] = localData[mode].slice(0, 10);
-        localStorage.setItem('fact_lb_v3', JSON.stringify(localData));
+        
+        // Skip cloud saving if the teacher hasn't configured it yet
+        if (CLOUD_URL.includes("REPLACE_THIS")) {
+            var localData = getStoredData();
+            localData[mode].push({ name: name, score: score, time: time });
+            localData[mode].sort(function(a, b) { return b.score !== a.score ? b.score - a.score : a.time - b.time; });
+            localData[mode] = localData[mode].slice(0, 10);
+            localStorage.setItem('fact_lb_v3', JSON.stringify(localData));
+            return;
+        }
 
-        // 2. Fetch remote records, merge structural variations safely, and upload back to the cloud
-        fetch(CLOUD_URL)
-            .then(function(res) {
-                if (res.status === 404) return { easy: [], normal: [], hard: [], vhard: [] };
-                return res.json();
-            })
-            .then(function(remoteData) {
-                if (!remoteData.easy) remoteData.easy = [];
-                if (!remoteData.normal) remoteData.normal = [];
-                if (!remoteData.hard) remoteData.hard = [];
-                if (!remoteData.vhard) remoteData.vhard = [];
-
-                remoteData[mode].push({ name: name, score: score, time: time });
-                remoteData[mode].sort(function(a, b) { return b.score !== a.score ? b.score - a.score : a.time - b.time; });
-                remoteData[mode] = remoteData[mode].slice(0, 10);
-
-                return fetch(CLOUD_URL, {
-                    method: 'PUT',
-                    body: JSON.stringify(remoteData),
-                    headers: { 'Content-Type': 'application/json' }
-                }).then(function() { return remoteData; });
-            })
-            .then(function(syncedData) {
-                localStorage.setItem('fact_lb_v3', JSON.stringify(syncedData));
-            })
-            .catch(function(e) { console.log("Cloud synced bypassed. Running on secure offline sandbox data.", e); });
+        // Send score to Google Sheets securely using URL parameters (bypasses CORS blocks)
+        var addUrl = CLOUD_URL + "?action=add&mode=" + encodeURIComponent(mode) + "&name=" + encodeURIComponent(name) + "&score=" + encodeURIComponent(score) + "&time=" + encodeURIComponent(time);
+        
+        fetch(addUrl, { mode: 'no-cors' })
+            .then(function() { console.log("Score safely dispatched to Google Sheets."); })
+            .catch(function(e) { console.log("Error contacting Google Sheets.", e); });
     }
 
     function showLeaderboard() {
-        switchScreen('screen-leaderboard');
-        // Render local records first for visual snappiness
-        renderLeaderboardTables(getStoredData());
         
-        // Asynchronously pull global records across all browsers/links
+        if (CLOUD_URL.includes("REPLACE_THIS")) {
+            alert("TEACHER NOTICE:\nYou haven't connected your Google Sheet yet! Scores will only save locally to this computer.\n\nPlease follow the setup instructions to get your Google Web App URL and paste it into the code.");
+        }
+
+        switchScreen('screen-leaderboard');
+        renderLeaderboardTables(getStoredData()); // Show local fast
+        
+        if (CLOUD_URL.includes("REPLACE_THIS")) return;
+
+        // Pull global records from Google Sheets
         fetch(CLOUD_URL)
             .then(function(res) {
-                if (res.status === 404) return null;
+                if (!res.ok) throw new Error("Database error");
                 return res.json();
             })
             .then(function(remoteData) {
@@ -686,7 +683,7 @@
                     renderLeaderboardTables(remoteData);
                 }
             })
-            .catch(function(err) { console.log("Cloud request failed, using local fallback container.", err); });
+            .catch(function(err) { console.log("Google Sheets request failed.", err); });
     }
 
     function switchLbTab(mode) {
